@@ -4,6 +4,7 @@ require_relative 'schema/json_generator'
 require_relative 'schema/json_compiler'
 require_relative 'schema/xml_generator'
 require_relative 'schema/xml_compiler'
+require_relative 'schema/openapi_compiler'
 require_relative 'schema/openapi_parser'
 
 module Shale
@@ -32,6 +33,25 @@ module Shale
         title: title,
         description: description,
         pretty: pretty
+      )
+    end
+
+    # Generate Shale model from OpenAPI/Swagger document
+    #
+    # @param [String] document raw JSON or YAML OpenAPI/Swagger document
+    # @param [Hash<String, String>, nil] namespace_mapping
+    #
+    # @return [Hash<String, String>]
+    #
+    # @example
+    #   Shale::Schema.from_openapi(openapi_doc, namespace_mapping: { 'Address' => 'Models' })
+    #   # => { 'address' => '...ruby source...', 'person' => '...ruby source...' }
+    #
+    # @api public
+    def self.from_openapi(document, namespace_mapping: nil)
+      OpenAPICompiler.new.to_models(
+        document,
+        namespace_mapping: namespace_mapping
       )
     end
 

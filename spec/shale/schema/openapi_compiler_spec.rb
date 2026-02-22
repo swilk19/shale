@@ -1,0 +1,600 @@
+# frozen_string_literal: true
+
+require 'shale/adapter/json'
+require 'shale/schema/openapi_compiler'
+
+RSpec.describe Shale::Schema::OpenAPICompiler do
+  before(:each) do
+    Shale.json_adapter = Shale::Adapter::JSON
+  end
+
+  describe '#as_models' do
+    context 'with a single object schema' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.3",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "age": { "type": "integer" },
+                    "active": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'generates one model with correct properties' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].id).to eq('Person')
+        expect(models[0].name).to eq('Person')
+        expect(models[0].properties.length).to eq(3)
+        expect(models[0].properties[0].mapping_name).to eq('name')
+        expect(models[0].properties[0].type).to be_a(Shale::Schema::Compiler::String)
+        expect(models[0].properties[1].mapping_name).to eq('age')
+        expect(models[0].properties[1].type).to be_a(Shale::Schema::Compiler::Integer)
+        expect(models[0].properties[2].mapping_name).to eq('active')
+        expect(models[0].properties[2].type).to be_a(Shale::Schema::Compiler::Boolean)
+      end
+    end
+
+    context 'with multiple schemas and $ref' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Address": {
+                  "type": "object",
+                  "properties": {
+                    "street": { "type": "string" },
+                    "city": { "type": "string" }
+                  }
+                },
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "address": { "$ref": "#/components/schemas/Address" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'generates models with references' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(2)
+
+        address = models.find { |m| m.id == 'Address' }
+        person = models.find { |m| m.id == 'Person' }
+
+        expect(address).not_to be_nil
+        expect(address.properties.length).to eq(2)
+
+        expect(person).not_to be_nil
+        expect(person.properties.length).to eq(2)
+        expect(person.properties[1].mapping_name).to eq('address')
+        expect(person.properties[1].type).to be_a(Shale::Schema::Compiler::Complex)
+        expect(person.properties[1].type.id).to eq('Address')
+      end
+    end
+
+    context 'with array property referencing another schema' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Tag": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" }
+                  }
+                },
+                "Pet": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "tags": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Tag" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'generates collection attribute' do
+        models = described_class.new.as_models(document)
+
+        pet = models.find { |m| m.id == 'Pet' }
+        tags_prop = pet.properties.find { |p| p.mapping_name == 'tags' }
+
+        expect(tags_prop.collection?).to eq(true)
+        expect(tags_prop.type).to be_a(Shale::Schema::Compiler::Complex)
+        expect(tags_prop.type.id).to eq('Tag')
+      end
+    end
+
+    context 'with namespace_mapping' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Address": {
+                  "type": "object",
+                  "properties": {
+                    "street": { "type": "string" }
+                  }
+                },
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "address": { "$ref": "#/components/schemas/Address" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      let(:mapping) do
+        { 'Address' => 'Models', 'Person' => 'Models' }
+      end
+
+      it 'generates models with modules' do
+        models = described_class.new.as_models(document, namespace_mapping: mapping)
+
+        expect(models.length).to eq(2)
+
+        address = models.find { |m| m.id == 'Address' }
+        person = models.find { |m| m.id == 'Person' }
+
+        expect(address.name).to eq('Models::Address')
+        expect(person.name).to eq('Models::Person')
+      end
+    end
+
+    context 'with all scalar types' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Record": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "count": { "type": "integer" },
+                    "score": { "type": "number" },
+                    "active": { "type": "boolean" },
+                    "born": { "type": "string", "format": "date" },
+                    "updated": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'maps all scalar types correctly' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        props = models[0].properties
+
+        expect(props[0].type).to be_a(Shale::Schema::Compiler::String)
+        expect(props[1].type).to be_a(Shale::Schema::Compiler::Integer)
+        expect(props[2].type).to be_a(Shale::Schema::Compiler::Float)
+        expect(props[3].type).to be_a(Shale::Schema::Compiler::Boolean)
+        expect(props[4].type).to be_a(Shale::Schema::Compiler::Date)
+        expect(props[5].type).to be_a(Shale::Schema::Compiler::Time)
+      end
+    end
+
+    context 'with circular self-reference' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "TreeNode": {
+                  "type": "object",
+                  "properties": {
+                    "value": { "type": "string" },
+                    "children": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/TreeNode" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'handles self-referencing schemas' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].id).to eq('TreeNode')
+
+        children = models[0].properties.find { |p| p.mapping_name == 'children' }
+        expect(children.collection?).to eq(true)
+        expect(children.type).to eq(models[0])
+      end
+    end
+
+    context 'with Swagger 2.0 document' do
+      let(:document) do
+        <<~DATA
+          {
+            "swagger": "2.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "paths": {},
+            "definitions": {
+              "Pet": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'generates models from definitions' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].id).to eq('Pet')
+        expect(models[0].properties[0].mapping_name).to eq('name')
+      end
+    end
+
+    context 'when $ref points to a non-object schema' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "PhoneNumber": {
+                  "type": "string"
+                },
+                "Contact": {
+                  "type": "object",
+                  "properties": {
+                    "phone": { "$ref": "#/components/schemas/PhoneNumber" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'resolves ref to scalar type' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].id).to eq('Contact')
+        expect(models[0].properties[0].type).to be_a(Shale::Schema::Compiler::String)
+      end
+    end
+
+    context 'with default values' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Config": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean", "default": true },
+                    "name": { "type": "string", "default": "default_name" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'captures default values' do
+        models = described_class.new.as_models(document)
+
+        expect(models[0].properties[0].default).to eq(true)
+        expect(models[0].properties[1].default).to eq('"default_name"')
+      end
+    end
+
+    context 'with invalid document' do
+      it 'raises SchemaError' do
+        expect do
+          described_class.new.as_models('{{{{not valid')
+        end.to raise_error(Shale::SchemaError, 'document is not valid JSON or YAML')
+      end
+    end
+
+    context 'with unsupported version' do
+      let(:document) do
+        '{ "openapi": "4.0.0", "info": { "title": "Future", "version": "1.0.0" } }'
+      end
+
+      it 'raises SchemaError' do
+        expect do
+          described_class.new.as_models(document)
+        end.to raise_error(Shale::SchemaError, 'unsupported or missing OpenAPI/Swagger version')
+      end
+    end
+  end
+
+  describe '#to_models' do
+    context 'with a simple schema' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      let(:expected) do
+        <<~DATA
+          require 'shale'
+
+          class Person < Shale::Mapper
+            attribute :name, Shale::Type::String
+
+            json do
+              map 'name', to: :name
+            end
+          end
+        DATA
+      end
+
+      it 'generates Ruby source code' do
+        models = described_class.new.to_models(document)
+        expect(models).to eq({ 'person' => expected })
+      end
+    end
+
+    context 'with multiple schemas and references' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Address": {
+                  "type": "object",
+                  "properties": {
+                    "street": { "type": "string" }
+                  }
+                },
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "address": { "$ref": "#/components/schemas/Address" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      let(:expected_address) do
+        <<~DATA
+          require 'shale'
+
+          class Address < Shale::Mapper
+            attribute :street, Shale::Type::String
+
+            json do
+              map 'street', to: :street
+            end
+          end
+        DATA
+      end
+
+      let(:expected_person) do
+        <<~DATA
+          require 'shale'
+
+          require_relative 'address'
+
+          class Person < Shale::Mapper
+            attribute :name, Shale::Type::String
+            attribute :address, Address
+
+            json do
+              map 'name', to: :name
+              map 'address', to: :address
+            end
+          end
+        DATA
+      end
+
+      it 'generates Ruby source code for all models' do
+        models = described_class.new.to_models(document)
+        expect(models).to eq({
+          'address' => expected_address,
+          'person' => expected_person,
+        })
+      end
+    end
+
+    context 'with namespace_mapping' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Address": {
+                  "type": "object",
+                  "properties": {
+                    "street": { "type": "string" }
+                  }
+                },
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "address": { "$ref": "#/components/schemas/Address" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      let(:mapping) do
+        { 'Address' => 'api', 'Person' => 'api' }
+      end
+
+      let(:expected_address) do
+        <<~DATA
+          require 'shale'
+
+          module Api
+            class Address < Shale::Mapper
+              attribute :street, Shale::Type::String
+
+              json do
+                map 'street', to: :street
+              end
+            end
+          end
+        DATA
+      end
+
+      let(:expected_person) do
+        <<~DATA
+          require 'shale'
+
+          require_relative 'address'
+
+          module Api
+            class Person < Shale::Mapper
+              attribute :name, Shale::Type::String
+              attribute :address, Api::Address
+
+              json do
+                map 'name', to: :name
+                map 'address', to: :address
+              end
+            end
+          end
+        DATA
+      end
+
+      it 'generates Ruby source code with modules' do
+        models = described_class.new.to_models(document, namespace_mapping: mapping)
+        expect(models).to eq({
+          'api/address' => expected_address,
+          'api/person' => expected_person,
+        })
+      end
+    end
+
+    context 'with collection and default values' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Config": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean", "default": true },
+                    "tags": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      let(:expected) do
+        <<~DATA
+          require 'shale'
+
+          class Config < Shale::Mapper
+            attribute :enabled, Shale::Type::Boolean, default: -> { true }
+            attribute :tags, Shale::Type::String, collection: true
+
+            json do
+              map 'enabled', to: :enabled
+              map 'tags', to: :tags
+            end
+          end
+        DATA
+      end
+
+      it 'generates Ruby source code with collections and defaults' do
+        models = described_class.new.to_models(document)
+        expect(models).to eq({ 'config' => expected })
+      end
+    end
+  end
+end

@@ -153,6 +153,129 @@ RSpec.describe Shale::Schema do
     end
   end
 
+  describe '.from_openapi' do
+    context 'without namespace mapping' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      let(:expected_model) do
+        <<~DATA
+          require 'shale'
+
+          class Person < Shale::Mapper
+            attribute :name, Shale::Type::String
+
+            json do
+              map 'name', to: :name
+            end
+          end
+        DATA
+      end
+
+      it 'generates Shale models' do
+        Shale.json_adapter = Shale::Adapter::JSON
+        models = described_class.from_openapi(document)
+        expect(models.length).to eq(1)
+        expect(models).to eq({ 'person' => expected_model })
+      end
+    end
+
+    context 'with namespace mapping' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Address": {
+                  "type": "object",
+                  "properties": {
+                    "city": { "type": "string" }
+                  }
+                },
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "address": { "$ref": "#/components/schemas/Address" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      let(:mapping) do
+        { 'Address' => 'models', 'Person' => 'models' }
+      end
+
+      let(:expected_person) do
+        <<~DATA
+          require 'shale'
+
+          require_relative 'address'
+
+          module Models
+            class Person < Shale::Mapper
+              attribute :name, Shale::Type::String
+              attribute :address, Models::Address
+
+              json do
+                map 'name', to: :name
+                map 'address', to: :address
+              end
+            end
+          end
+        DATA
+      end
+
+      let(:expected_address) do
+        <<~DATA
+          require 'shale'
+
+          module Models
+            class Address < Shale::Mapper
+              attribute :city, Shale::Type::String
+
+              json do
+                map 'city', to: :city
+              end
+            end
+          end
+        DATA
+      end
+
+      it 'generates Shale models' do
+        Shale.json_adapter = Shale::Adapter::JSON
+        models = described_class.from_openapi(document, namespace_mapping: mapping)
+
+        expect(models.length).to eq(2)
+        expect(models).to eq({
+          'models/address' => expected_address,
+          'models/person' => expected_person,
+        })
+      end
+    end
+  end
+
   describe '.to_xml' do
     let(:expected_xml_schema) do
       schema = <<~DATA.gsub(/\n\z/, '')
