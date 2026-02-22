@@ -17,4 +17,8 @@ gem 'csv'
 group :test do
   gem 'rspec', '~> 3.13.0'
   gem 'simplecov', '~> 0.22.0', require: false
+
+  # Ruby 4.0 removed these from default gems
+  gem 'benchmark'
+  gem 'ostruct'
 end
