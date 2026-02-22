@@ -581,6 +581,108 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
       end
     end
 
+    context 'with additionalProperties-only schema as property' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Pod": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "labels": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'maps additionalProperties to Value type' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        pod = models[0]
+        labels = pod.properties.find { |p| p.mapping_name == 'labels' }
+
+        expect(labels.type).to be_a(Shale::Schema::Compiler::Value)
+      end
+    end
+
+    context 'with additionalProperties-only schema via $ref' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "StringMap": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" }
+                },
+                "Pod": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "labels": { "$ref": "#/components/schemas/StringMap" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'resolves ref to Value type and skips generating mapper for map schema' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].id).to eq('Pod')
+
+        labels = models[0].properties.find { |p| p.mapping_name == 'labels' }
+        expect(labels.type).to be_a(Shale::Schema::Compiler::Value)
+      end
+    end
+
+    context 'with object having both properties and additionalProperties' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Config": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'generates Complex type with named properties' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].id).to eq('Config')
+        expect(models[0].properties.length).to eq(1)
+        expect(models[0].properties[0].mapping_name).to eq('name')
+      end
+    end
+
     context 'with unsupported version' do
       let(:document) do
         '{ "openapi": "4.0.0", "info": { "title": "Future", "version": "1.0.0" } }'

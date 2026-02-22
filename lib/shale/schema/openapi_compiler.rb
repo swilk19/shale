@@ -143,6 +143,7 @@ module Shale
         end
 
         return unless schema['type'] == 'object'
+        return if additional_properties_only?(schema)
         return @types[name] if @types.key?(name)
 
         package = @namespace_mapping[name]
@@ -181,6 +182,8 @@ module Shale
           type = find_or_compile_ref_target(target_name, target_schema)
         elsif schema.key?('allOf')
           type = compile_all_of(name, schema)
+        elsif additional_properties_only?(schema)
+          type = Compiler::Value.new
         elsif schema['type'] == 'object'
           type = compile_schema(name, schema)
         else
@@ -203,7 +206,9 @@ module Shale
       #
       # @api private
       def find_or_compile_ref_target(name, schema)
-        if schema.is_a?(Hash) && schema['type'] == 'object'
+        if additional_properties_only?(schema)
+          Compiler::Value.new
+        elsif schema.is_a?(Hash) && schema['type'] == 'object'
           compile_schema(name, schema)
         elsif schema.is_a?(Hash) && schema.key?('allOf')
           compile_all_of(name, schema)
@@ -235,6 +240,20 @@ module Shale
         end
 
         complex
+      end
+
+      # Check if schema is a pure additionalProperties map with no named properties
+      #
+      # @param [Hash, nil] schema
+      #
+      # @return [Boolean]
+      #
+      # @api private
+      def additional_properties_only?(schema)
+        schema.is_a?(Hash) &&
+          schema['type'] == 'object' &&
+          schema.key?('additionalProperties') &&
+          (schema['properties'].nil? || schema['properties'].empty?)
       end
 
       # Recursively collect properties from allOf member schemas
