@@ -45,7 +45,7 @@ OptionParser.new do |opts|
   opts.on('-i INPUT', '--input', Array, 'Input file')
   opts.on('-o OUTPUT', '--output', 'Output (defaults to STDOUT)')
   opts.on('-r ROOT', '--root ROOT', 'Shale model class name')
-  opts.on('-f FORMAT', '--format FORMAT', 'Schema format: JSON (default), XML')
+  opts.on('-f FORMAT', '--format FORMAT', 'Schema format: JSON (default), XML, OpenAPI')
   opts.on('-p', '--pretty', 'Pretty print generated schema')
   opts.on('-m MAPPING', '--mapping', Array, 'Namespace mapping')
 
@@ -82,6 +82,11 @@ if params[:compile]
     load_xml_parser
     models = Shale::Schema.from_xml(
       schemas,
+      namespace_mapping: namespace_mapping
+    )
+  elsif params[:format] == 'openapi'
+    models = Shale::Schema.from_openapi(
+      schemas[0],
       namespace_mapping: namespace_mapping
     )
   else
