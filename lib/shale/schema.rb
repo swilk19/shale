@@ -4,6 +4,7 @@ require_relative 'schema/json_generator'
 require_relative 'schema/json_compiler'
 require_relative 'schema/xml_generator'
 require_relative 'schema/xml_compiler'
+require_relative 'schema/openapi_parser'
 
 module Shale
   # Module for handling JSON and XML schema
