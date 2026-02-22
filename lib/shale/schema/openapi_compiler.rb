@@ -151,8 +151,10 @@ module Shale
         complex = Compiler::Complex.new(name, root, package)
         @types[name] = complex
 
+        required_fields = schema['required'] || []
+
         (schema['properties'] || {}).each do |prop_name, prop_schema|
-          property = compile_property(prop_name, prop_schema)
+          property = compile_property(prop_name, prop_schema, required: required_fields.include?(prop_name))
           complex.add_property(property) if property
         end
 
@@ -163,11 +165,12 @@ module Shale
       #
       # @param [String] name property name
       # @param [Hash] schema property schema definition
+      # @param [true, false] required whether property is required
       #
       # @return [Shale::Schema::Compiler::Property, nil]
       #
       # @api private
-      def compile_property(name, schema)
+      def compile_property(name, schema, required: false)
         return unless schema.is_a?(Hash)
 
         collection = false
@@ -195,7 +198,7 @@ module Shale
           default = schema['default']
         end
 
-        Compiler::Property.new(name, type, collection, default) if type
+        Compiler::Property.new(name, type, collection, default, required: required) if type
       end
 
       # Find or compile a ref target
@@ -236,8 +239,10 @@ module Shale
 
         collect_all_of_properties(schema, complex)
 
+        required_fields = schema['required'] || []
+
         (schema['properties'] || {}).each do |prop_name, prop_schema|
-          property = compile_property(prop_name, prop_schema)
+          property = compile_property(prop_name, prop_schema, required: required_fields.include?(prop_name))
           complex.add_property(property) if property
         end
 
@@ -275,8 +280,12 @@ module Shale
           if member_schema.key?('allOf')
             collect_all_of_properties(member_schema, complex)
           else
+            required_fields = member_schema['required'] || []
+
             (member_schema['properties'] || {}).each do |prop_name, prop_schema|
-              property = compile_property(prop_name, prop_schema)
+              property = compile_property(
+                prop_name, prop_schema, required: required_fields.include?(prop_name)
+              )
               complex.add_property(property) if property
             end
           end

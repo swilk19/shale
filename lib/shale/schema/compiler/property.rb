@@ -36,14 +36,16 @@ module Shale
         # @param [Shale::Schema::Compiler::Type] type
         # @param [true, false] collection
         # @param [Object] default
+        # @param [true, false] required
         #
         # @api private
-        def initialize(name, type, collection, default)
+        def initialize(name, type, collection, default, required: false)
           @mapping_name = name
           @attribute_name = Utils.snake_case(name)
           @type = type
           @collection = collection
           @default = default
+          @required = required
         end
 
         # Return whether property is a collection
@@ -53,6 +55,15 @@ module Shale
         # @api private
         def collection?
           @collection
+        end
+
+        # Return whether property is required
+        #
+        # @return [true, false]
+        #
+        # @api private
+        def required?
+          @required
         end
 
         # Return default value

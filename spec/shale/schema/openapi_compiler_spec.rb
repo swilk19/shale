@@ -739,6 +739,121 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
       end
     end
 
+    context 'with required fields' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Person": {
+                  "type": "object",
+                  "required": ["name"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "age": { "type": "integer" },
+                    "email": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'tracks which properties are required' do
+        models = described_class.new.as_models(document)
+
+        person = models[0]
+        name_prop = person.properties.find { |p| p.mapping_name == 'name' }
+        age_prop = person.properties.find { |p| p.mapping_name == 'age' }
+        email_prop = person.properties.find { |p| p.mapping_name == 'email' }
+
+        expect(name_prop.required?).to eq(true)
+        expect(age_prop.required?).to eq(false)
+        expect(email_prop.required?).to eq(false)
+      end
+    end
+
+    context 'with required fields in allOf members' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Employee": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": ["name"],
+                      "properties": {
+                        "name": { "type": "string" },
+                        "age": { "type": "integer" }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["employee_id"],
+                      "properties": {
+                        "employee_id": { "type": "integer" },
+                        "department": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'tracks required from each allOf member' do
+        models = described_class.new.as_models(document)
+
+        employee = models[0]
+        name_prop = employee.properties.find { |p| p.mapping_name == 'name' }
+        age_prop = employee.properties.find { |p| p.mapping_name == 'age' }
+        id_prop = employee.properties.find { |p| p.mapping_name == 'employee_id' }
+        dept_prop = employee.properties.find { |p| p.mapping_name == 'department' }
+
+        expect(name_prop.required?).to eq(true)
+        expect(age_prop.required?).to eq(false)
+        expect(id_prop.required?).to eq(true)
+        expect(dept_prop.required?).to eq(false)
+      end
+    end
+
+    context 'with no required array' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Widget": {
+                  "type": "object",
+                  "properties": {
+                    "color": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'defaults all properties to not required' do
+        models = described_class.new.as_models(document)
+
+        color = models[0].properties[0]
+        expect(color.required?).to eq(false)
+      end
+    end
+
     context 'with dotted schema names' do
       let(:document) do
         <<~DATA
