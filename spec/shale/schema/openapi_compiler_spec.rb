@@ -854,6 +854,43 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
       end
     end
 
+    context 'with $ prefixed property names' do
+      let(:document) do
+        <<~DATA
+          {
+            "swagger": "2.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "paths": {},
+            "definitions": {
+              "JSONSchemaProps": {
+                "type": "object",
+                "properties": {
+                  "$ref": { "type": "string" },
+                  "$schema": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'sanitizes $ from attribute names and preserves mapping names' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        schema_props = models[0]
+
+        ref_prop = schema_props.properties.find { |p| p.mapping_name == '$ref' }
+        schema_prop = schema_props.properties.find { |p| p.mapping_name == '$schema' }
+        desc_prop = schema_props.properties.find { |p| p.mapping_name == 'description' }
+
+        expect(ref_prop.attribute_name).to eq('ref')
+        expect(schema_prop.attribute_name).to eq('schema')
+        expect(desc_prop.attribute_name).to eq('description')
+      end
+    end
+
     context 'with dotted schema names' do
       let(:document) do
         <<~DATA

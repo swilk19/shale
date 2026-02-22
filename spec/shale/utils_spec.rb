@@ -56,6 +56,10 @@ RSpec.describe Shale::Utils do
         %w[foo-Bar foo_bar],
         %w[foo-bar foo_bar],
 
+        # OpenAPI allows $ prefix in property names
+        %w[$ref ref],
+        %w[$schema schema],
+
         %w[foobar foobar],
         %w[fooBar foo_bar],
         %w[foo_bar foo_bar],

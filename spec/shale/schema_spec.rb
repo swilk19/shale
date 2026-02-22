@@ -188,6 +188,10 @@ RSpec.describe Shale::Schema do
             yaml do
               map 'name', to: :name
             end
+
+            hsh do
+              map 'name', to: :name
+            end
           end
         DATA
       end
@@ -251,6 +255,11 @@ RSpec.describe Shale::Schema do
                 map 'name', to: :name
                 map 'address', to: :address
               end
+
+              hsh do
+                map 'name', to: :name
+                map 'address', to: :address
+              end
             end
           end
         DATA
@@ -269,6 +278,10 @@ RSpec.describe Shale::Schema do
               end
 
               yaml do
+                map 'city', to: :city
+              end
+
+              hsh do
                 map 'city', to: :city
               end
             end
