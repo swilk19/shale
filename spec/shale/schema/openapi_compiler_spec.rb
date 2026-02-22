@@ -683,6 +683,62 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
       end
     end
 
+    context 'with primitive definitions referenced via $ref' do
+      let(:document) do
+        <<~DATA
+          {
+            "swagger": "2.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "paths": {},
+            "definitions": {
+              "Quantity": {
+                "type": "string"
+              },
+              "Time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "IntOrString": {
+                "type": "string",
+                "format": "int-or-string"
+              },
+              "JSON": {
+                "description": "Represents an unstructured JSON value"
+              },
+              "Resource": {
+                "type": "object",
+                "properties": {
+                  "cpu": { "$ref": "#/definitions/Quantity" },
+                  "created": { "$ref": "#/definitions/Time" },
+                  "port": { "$ref": "#/definitions/IntOrString" },
+                  "metadata": { "$ref": "#/definitions/JSON" }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'resolves primitive definitions to scalar types without generating mapper classes' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].id).to eq('Resource')
+
+        cpu = models[0].properties.find { |p| p.mapping_name == 'cpu' }
+        expect(cpu.type).to be_a(Shale::Schema::Compiler::String)
+
+        created = models[0].properties.find { |p| p.mapping_name == 'created' }
+        expect(created.type).to be_a(Shale::Schema::Compiler::Time)
+
+        port = models[0].properties.find { |p| p.mapping_name == 'port' }
+        expect(port.type).to be_a(Shale::Schema::Compiler::String)
+
+        metadata = models[0].properties.find { |p| p.mapping_name == 'metadata' }
+        expect(metadata.type).to be_a(Shale::Schema::Compiler::Value)
+      end
+    end
+
     context 'with unsupported version' do
       let(:document) do
         '{ "openapi": "4.0.0", "info": { "title": "Future", "version": "1.0.0" } }'
