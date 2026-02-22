@@ -739,6 +739,106 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
       end
     end
 
+    context 'with dotted schema names' do
+      let(:document) do
+        <<~DATA
+          {
+            "swagger": "2.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "paths": {},
+            "definitions": {
+              "io.k8s.api.core.v1.Container": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "image": { "type": "string" }
+                }
+              },
+              "io.k8s.api.core.v1.Pod": {
+                "type": "object",
+                "properties": {
+                  "metadata": { "type": "string" },
+                  "container": { "$ref": "#/definitions/io.k8s.api.core.v1.Container" }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'uses last dot-segment as class name' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(2)
+
+        pod = models.find { |m| m.id == 'io.k8s.api.core.v1.Pod' }
+        container = models.find { |m| m.id == 'io.k8s.api.core.v1.Container' }
+
+        expect(pod).not_to be_nil
+        expect(pod.root_name).to eq('Pod')
+        expect(pod.name).to eq('Pod')
+
+        expect(container).not_to be_nil
+        expect(container.root_name).to eq('Container')
+        expect(container.name).to eq('Container')
+      end
+
+      it 'uses namespace_mapping for fully qualified names' do
+        mapping = {
+          'io.k8s.api.core.v1.Pod' => 'K8s::Core::V1',
+          'io.k8s.api.core.v1.Container' => 'K8s::Core::V1',
+        }
+
+        models = described_class.new.as_models(document, namespace_mapping: mapping)
+
+        pod = models.find { |m| m.id == 'io.k8s.api.core.v1.Pod' }
+        container = models.find { |m| m.id == 'io.k8s.api.core.v1.Container' }
+
+        expect(pod.name).to eq('K8s::Core::V1::Pod')
+        expect(container.name).to eq('K8s::Core::V1::Container')
+      end
+    end
+
+    context 'with dotted schema names using allOf' do
+      let(:document) do
+        <<~DATA
+          {
+            "swagger": "2.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "paths": {},
+            "definitions": {
+              "io.k8s.api.core.v1.Base": {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string" }
+                }
+              },
+              "io.k8s.api.core.v1.Pod": {
+                "allOf": [
+                  { "$ref": "#/definitions/io.k8s.api.core.v1.Base" },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "spec": { "type": "string" }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'uses last dot-segment as class name for allOf schemas' do
+        models = described_class.new.as_models(document)
+
+        pod = models.find { |m| m.id == 'io.k8s.api.core.v1.Pod' }
+        expect(pod).not_to be_nil
+        expect(pod.root_name).to eq('Pod')
+        expect(pod.properties.map(&:mapping_name)).to eq(%w[kind spec])
+      end
+    end
+
     context 'with unsupported version' do
       let(:document) do
         '{ "openapi": "4.0.0", "info": { "title": "Future", "version": "1.0.0" } }'

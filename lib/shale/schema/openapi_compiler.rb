@@ -147,7 +147,8 @@ module Shale
         return @types[name] if @types.key?(name)
 
         package = @namespace_mapping[name]
-        complex = Compiler::Complex.new(name, name, package)
+        root = name.include?('.') ? name.split('.').last : name
+        complex = Compiler::Complex.new(name, root, package)
         @types[name] = complex
 
         (schema['properties'] || {}).each do |prop_name, prop_schema|
@@ -229,7 +230,8 @@ module Shale
         return @types[name] if @types.key?(name)
 
         package = @namespace_mapping[name]
-        complex = Compiler::Complex.new(name, name, package)
+        root = name.include?('.') ? name.split('.').last : name
+        complex = Compiler::Complex.new(name, root, package)
         @types[name] = complex
 
         collect_all_of_properties(schema, complex)
