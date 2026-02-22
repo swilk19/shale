@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'erb'
+
 require_relative '../../shale'
 require_relative '../utils'
 require_relative 'compiler/boolean'
@@ -11,7 +13,6 @@ require_relative 'compiler/property'
 require_relative 'compiler/string'
 require_relative 'compiler/time'
 require_relative 'compiler/value'
-require_relative 'json_compiler'
 require_relative 'openapi_parser'
 require_relative 'openapi_ref_resolver'
 require_relative 'openapi_type_inferrer'
@@ -22,9 +23,44 @@ module Shale
     #
     # @api public
     class OpenAPICompiler
-      # Reuse the Shale model template from JSONCompiler
+      # Shale model template with both json and yaml mappings
       # @api private
-      MODEL_TEMPLATE = JSONCompiler::MODEL_TEMPLATE
+      MODEL_TEMPLATE = ERB.new(<<~TEMPLATE, trim_mode: '-')
+        require 'shale'
+        <%- unless type.references.empty? -%>
+
+        <%- type.references.each do |property| -%>
+        require_relative '<%= type.relative_path(property.type.file_name) %>'
+        <%- end -%>
+        <%- end -%>
+
+        <%- type.modules.each_with_index do |name, i| -%>
+        <%= '  ' * i %>module <%= name %>
+        <%- end -%>
+        <%- indent = '  ' * type.modules.length -%>
+        <%= indent %>class <%= type.root_name %> < Shale::Mapper
+          <%- type.properties.each do |property| -%>
+          <%= indent %>attribute :<%= property.attribute_name %>, <%= property.type.name -%>
+          <%- if property.collection? %>, collection: true<% end -%>
+          <%- unless property.default.nil? %>, default: -> { <%= property.default %> }<% end %>
+          <%- end -%>
+
+          <%= indent %>json do
+            <%- type.properties.each do |property| -%>
+            <%= indent %>map '<%= property.mapping_name %>', to: :<%= property.attribute_name %>
+            <%- end -%>
+          <%= indent %>end
+
+          <%= indent %>yaml do
+            <%- type.properties.each do |property| -%>
+            <%= indent %>map '<%= property.mapping_name %>', to: :<%= property.attribute_name %>
+            <%- end -%>
+          <%= indent %>end
+        <%= indent %>end
+        <%- type.modules.length.times do |i| -%>
+        <%= '  ' * (type.modules.length - i - 1) %>end
+        <%- end -%>
+      TEMPLATE
 
       # Generate Shale models from OpenAPI document and return as Complex objects
       #

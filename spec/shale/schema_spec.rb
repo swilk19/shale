@@ -184,6 +184,10 @@ RSpec.describe Shale::Schema do
             json do
               map 'name', to: :name
             end
+
+            yaml do
+              map 'name', to: :name
+            end
           end
         DATA
       end
@@ -242,6 +246,11 @@ RSpec.describe Shale::Schema do
                 map 'name', to: :name
                 map 'address', to: :address
               end
+
+              yaml do
+                map 'name', to: :name
+                map 'address', to: :address
+              end
             end
           end
         DATA
@@ -256,6 +265,10 @@ RSpec.describe Shale::Schema do
               attribute :city, Shale::Type::String
 
               json do
+                map 'city', to: :city
+              end
+
+              yaml do
                 map 'city', to: :city
               end
             end
