@@ -1002,6 +1002,10 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
             yaml do
               map 'name', to: :name
             end
+
+            hsh do
+              map 'name', to: :name
+            end
           end
         DATA
       end
@@ -1053,6 +1057,10 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
             yaml do
               map 'street', to: :street
             end
+
+            hsh do
+              map 'street', to: :street
+            end
           end
         DATA
       end
@@ -1073,6 +1081,11 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
             end
 
             yaml do
+              map 'name', to: :name
+              map 'address', to: :address
+            end
+
+            hsh do
               map 'name', to: :name
               map 'address', to: :address
             end
@@ -1135,6 +1148,10 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
               yaml do
                 map 'street', to: :street
               end
+
+              hsh do
+                map 'street', to: :street
+              end
             end
           end
         DATA
@@ -1157,6 +1174,11 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
               end
 
               yaml do
+                map 'name', to: :name
+                map 'address', to: :address
+              end
+
+              hsh do
                 map 'name', to: :name
                 map 'address', to: :address
               end
@@ -1219,6 +1241,10 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
             yaml do
               map 'name', to: :name
             end
+
+            hsh do
+              map 'name', to: :name
+            end
           end
         DATA
       end
@@ -1237,6 +1263,11 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
             end
 
             yaml do
+              map 'name', to: :name
+              map 'employee_id', to: :employee_id
+            end
+
+            hsh do
               map 'name', to: :name
               map 'employee_id', to: :employee_id
             end
@@ -1291,6 +1322,11 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
             end
 
             yaml do
+              map 'enabled', to: :enabled
+              map 'tags', to: :tags
+            end
+
+            hsh do
               map 'enabled', to: :enabled
               map 'tags', to: :tags
             end

@@ -56,6 +56,12 @@ module Shale
             <%= indent %>map '<%= property.mapping_name %>', to: :<%= property.attribute_name %>
             <%- end -%>
           <%= indent %>end
+
+          <%= indent %>hsh do
+            <%- type.properties.each do |property| -%>
+            <%= indent %>map '<%= property.mapping_name %>', to: :<%= property.attribute_name %>
+            <%- end -%>
+          <%= indent %>end
         <%= indent %>end
         <%- type.modules.length.times do |i| -%>
         <%= '  ' * (type.modules.length - i - 1) %>end
