@@ -353,6 +353,234 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
       end
     end
 
+    context 'with allOf merging two inline objects' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Employee": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "employee_id": { "type": "integer" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'merges properties from all members' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].id).to eq('Employee')
+        expect(models[0].properties.length).to eq(2)
+        expect(models[0].properties[0].mapping_name).to eq('name')
+        expect(models[0].properties[0].type).to be_a(Shale::Schema::Compiler::String)
+        expect(models[0].properties[1].mapping_name).to eq('employee_id')
+        expect(models[0].properties[1].type).to be_a(Shale::Schema::Compiler::Integer)
+      end
+    end
+
+    context 'with allOf combining $ref and inline properties' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Address": {
+                  "type": "object",
+                  "properties": {
+                    "street": { "type": "string" },
+                    "city": { "type": "string" }
+                  }
+                },
+                "Office": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Address" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "floor": { "type": "integer" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'merges ref properties with inline properties' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(2)
+
+        office = models.find { |m| m.id == 'Office' }
+        expect(office.properties.length).to eq(3)
+        expect(office.properties.map(&:mapping_name)).to eq(%w[street city floor])
+      end
+    end
+
+    context 'with deeply nested allOf chain' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Base": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer" }
+                  }
+                },
+                "Middle": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Base" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" }
+                      }
+                    }
+                  ]
+                },
+                "Child": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Middle" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "age": { "type": "integer" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'flattens properties through the chain' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(3)
+
+        child = models.find { |m| m.id == 'Child' }
+        expect(child.properties.length).to eq(3)
+        expect(child.properties.map(&:mapping_name)).to eq(%w[id name age])
+      end
+    end
+
+    context 'with allOf having conflicting property names' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Merged": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "value": { "type": "string" }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "value": { "type": "integer" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'keeps the first occurrence' do
+        models = described_class.new.as_models(document)
+
+        expect(models.length).to eq(1)
+        expect(models[0].properties.length).to eq(1)
+        expect(models[0].properties[0].mapping_name).to eq('value')
+        expect(models[0].properties[0].type).to be_a(Shale::Schema::Compiler::String)
+      end
+    end
+
+    context 'with allOf in property position' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Address": {
+                  "type": "object",
+                  "properties": {
+                    "street": { "type": "string" }
+                  }
+                },
+                "Company": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "headquarters": {
+                      "allOf": [
+                        { "$ref": "#/components/schemas/Address" },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "floor": { "type": "integer" }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      it 'compiles allOf property as a complex type' do
+        models = described_class.new.as_models(document)
+
+        company = models.find { |m| m.id == 'Company' }
+        hq = company.properties.find { |p| p.mapping_name == 'headquarters' }
+
+        expect(hq.type).to be_a(Shale::Schema::Compiler::Complex)
+        expect(hq.type.properties.length).to eq(2)
+        expect(hq.type.properties.map(&:mapping_name)).to eq(%w[street floor])
+      end
+    end
+
     context 'with unsupported version' do
       let(:document) do
         '{ "openapi": "4.0.0", "info": { "title": "Future", "version": "1.0.0" } }'
@@ -547,6 +775,76 @@ RSpec.describe Shale::Schema::OpenAPICompiler do
         expect(models).to eq({
           'api/address' => expected_address,
           'api/person' => expected_person,
+        })
+      end
+    end
+
+    context 'with allOf schema' do
+      let(:document) do
+        <<~DATA
+          {
+            "openapi": "3.0.0",
+            "info": { "title": "Test", "version": "1.0.0" },
+            "components": {
+              "schemas": {
+                "Person": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" }
+                  }
+                },
+                "Employee": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Person" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "employee_id": { "type": "integer" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        DATA
+      end
+
+      let(:expected_person) do
+        <<~DATA
+          require 'shale'
+
+          class Person < Shale::Mapper
+            attribute :name, Shale::Type::String
+
+            json do
+              map 'name', to: :name
+            end
+          end
+        DATA
+      end
+
+      let(:expected_employee) do
+        <<~DATA
+          require 'shale'
+
+          class Employee < Shale::Mapper
+            attribute :name, Shale::Type::String
+            attribute :employee_id, Shale::Type::Integer
+
+            json do
+              map 'name', to: :name
+              map 'employee_id', to: :employee_id
+            end
+          end
+        DATA
+      end
+
+      it 'generates Ruby source code with merged properties' do
+        models = described_class.new.to_models(document)
+        expect(models).to eq({
+          'person' => expected_person,
+          'employee' => expected_employee,
         })
       end
     end

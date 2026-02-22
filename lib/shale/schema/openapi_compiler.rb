@@ -102,6 +102,10 @@ module Shale
           return compile_schema(target_name, target_schema)
         end
 
+        if schema.key?('allOf')
+          return compile_all_of(name, schema)
+        end
+
         return unless schema['type'] == 'object'
         return @types[name] if @types.key?(name)
 
@@ -139,6 +143,8 @@ module Shale
         if schema.key?('$ref')
           target_name, target_schema = @ref_resolver.resolve(schema['$ref'])
           type = find_or_compile_ref_target(target_name, target_schema)
+        elsif schema.key?('allOf')
+          type = compile_all_of(name, schema)
         elsif schema['type'] == 'object'
           type = compile_schema(name, schema)
         else
@@ -163,8 +169,60 @@ module Shale
       def find_or_compile_ref_target(name, schema)
         if schema.is_a?(Hash) && schema['type'] == 'object'
           compile_schema(name, schema)
+        elsif schema.is_a?(Hash) && schema.key?('allOf')
+          compile_all_of(name, schema)
         else
           OpenAPITypeInferrer.infer(schema)
+        end
+      end
+
+      # Compile an allOf composition schema by merging all member schemas' properties
+      #
+      # @param [String] name schema name
+      # @param [Hash] schema schema definition containing 'allOf' key
+      #
+      # @return [Shale::Schema::Compiler::Complex]
+      #
+      # @api private
+      def compile_all_of(name, schema)
+        return @types[name] if @types.key?(name)
+
+        package = @namespace_mapping[name]
+        complex = Compiler::Complex.new(name, name, package)
+        @types[name] = complex
+
+        collect_all_of_properties(schema, complex)
+
+        (schema['properties'] || {}).each do |prop_name, prop_schema|
+          property = compile_property(prop_name, prop_schema)
+          complex.add_property(property) if property
+        end
+
+        complex
+      end
+
+      # Recursively collect properties from allOf member schemas
+      #
+      # @param [Hash] schema schema containing 'allOf' key
+      # @param [Shale::Schema::Compiler::Complex] complex target complex type
+      #
+      # @api private
+      def collect_all_of_properties(schema, complex)
+        schema['allOf'].each do |member_schema|
+          next unless member_schema.is_a?(Hash)
+
+          if member_schema.key?('$ref')
+            _, member_schema = @ref_resolver.resolve(member_schema['$ref'])
+          end
+
+          if member_schema.key?('allOf')
+            collect_all_of_properties(member_schema, complex)
+          else
+            (member_schema['properties'] || {}).each do |prop_name, prop_schema|
+              property = compile_property(prop_name, prop_schema)
+              complex.add_property(property) if property
+            end
+          end
         end
       end
     end
